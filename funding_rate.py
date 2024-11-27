@@ -6,98 +6,205 @@ import plotly.express as px
 import streamlit as st  # 🎈 data web app development
 import requests
 from hyperliquid.info import Info
+from streamlit_autorefresh import st_autorefresh
+
 
 
 st.set_page_config(
     page_title="Perps vs Spot",
-    page_icon="🎰",
+    page_icon="💯",
     layout="wide",
 )
 
 def datetime_to_milliseconds(dt):
     return int(dt.timestamp() * 1000)
 
-# dashboard title
+# Dashboard title
 st.title("Perps vs Spot")
 
-
-info = Info(skip_ws=True)
+info = Info(skip_ws=False)
 
 res = info.meta_and_asset_ctxs()
 
 universe_data = res[0]['universe']
 OI_data = res[1]
 print(len(universe_data), len(OI_data))
-data = list(a|b for a,b in zip(universe_data, OI_data))
+
+data = [a | b for a, b in zip(universe_data, OI_data)]
+
 print(len(data), len(data[0]))
 df1 = pd.json_normalize(data)
 
-print(df1.head)
+available_coins = pd.unique(df1["name"])
 
-# top-level token filter
-token = st.selectbox("Select token", pd.unique(df1["name"]))
+# Top-level token filter
+token = st.selectbox("Select token", available_coins)
 
-start_date = datetime(2022, 1, 1)
-end_date = datetime.now()
+start_date = datetime(2022, 1, 1).date()
+end_date = datetime.now().date()
 max_days_range = timedelta(days=90)
-curr_start = start_date
-curr_end = end_date
-
-date_range = (start_date, end_date)
 
 if "slider_range" not in st.session_state:
     st.session_state.slider_range = (end_date - max_days_range, end_date)
 
 slider_range = st.slider(
-    "select a date range (max 3 months)",
+    "Select a date range (max 3 months)",
     min_value=start_date,
     max_value=end_date,
     value=st.session_state.slider_range,
     step=timedelta(days=1),
 )
 
-if slider_range != st.session_state.slider_range:
-    st.session_state.slider_range = slider_range
+selected_start_date, selected_end_date = slider_range
 
-selected_start_date, selected_end_date = st.session_state.slider_range
-
-
+# Check if the selected range exceeds the maximum allowed span
 if (selected_end_date - selected_start_date) > max_days_range:
+    st.warning("Please select a date range within the maximum allowed span of 3 months. Showing last 3 months from the selected end date")
     selected_start_date = selected_end_date - max_days_range
     st.session_state.slider_range = (selected_start_date, selected_end_date)
+    # st.experimental_rerun()  # Rerun the app to update the slider
 
-st.write(f"selected start date: {selected_start_date.date()}")
-st.write(f"selected end date: {selected_end_date.date()}")
+st.write(f"Showing from {selected_start_date} to {selected_end_date}")
 
-if selected_end_date - selected_start_date > max_days_range:
-    st.warning("date range has been adjusted to fit within the maximum allowed span of 3 months.")
+fr_response = info.funding_history(
+    name=token, 
+    startTime=datetime_to_milliseconds(datetime.combine(selected_start_date, datetime.min.time())), 
+    endTime=datetime_to_milliseconds(datetime.combine(selected_end_date, datetime.max.time()))
+)
 
-fr_response = info.funding_history(name=token, startTime=datetime_to_milliseconds(selected_start_date), endTime=datetime_to_milliseconds(selected_end_date))
-
-print(fr_response)
+# print(fr_response)
 df2 = pd.json_normalize(fr_response)
-print(df2)
+print(df2.head())
 
-# creating a single-element container
+# Creating a single-element container
 placeholder = st.empty()
 with placeholder.container():
-    fig_col1, fig_col2 = st.columns(2)
-    with fig_col1:
-        st.markdown("### Funding rate chart")
-        if "time" in df2.columns and "fundingRate" in df2.columns and "premium" in df2.columns:
-            if df2["time"].dtype != "datetime64[ns]":
-                df2["time"] = pd.to_datetime(df2["time"], unit="ms")
-            
-            fig = px.line(df2, x="time", y=["fundingRate", "premium"], title=f'{token} Funding Rate vs premium')  
-    
-            fig.update_layout(width=4000, height=600, legend_title_text="Legend")
-            fig.update_yaxes(tickformat=".6f")
-            
-            st.plotly_chart(fig, use_container_width=True)
+    # fig_col1, fig_col2 = st.columns(2)
+    # with fig_col1:
+    st.markdown("### Funding Rate Chart")
+    if {"time", "fundingRate", "premium"}.issubset(df2.columns):
+        if df2["time"].dtype != "datetime64[ns]":
+            df2["time"] = pd.to_datetime(df2["time"], unit="ms")
+        
+        fig = px.line(
+            df2, 
+            x="time", 
+            y=["fundingRate", "premium"], 
+            title=f'{token} Funding Rate vs Premium'
+        )  
 
-    st.markdown("### Detailed Data View")
-    st.dataframe(fr_response)
-    #     time.sleep(1)
+        fig.update_layout(width=1000, height=600, legend_title_text="Legend")  # Adjusted width for better display
+        fig.update_yaxes(tickformat=".6f")
+        
+        st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("Detailed View"):
+        st.markdown("### historical funding rates")
+        st.dataframe(fr_response)
+
+
+st.markdown("### Open Interest Chart")
+selected_coins = st.multiselect(
+    "Select coins to monitor",
+    options=available_coins,
+    default=['BTC', 'ETH']
+)
+
+st.session_state['selected_coins'] = selected_coins
+
+df3 = pd.DataFrame()
+# Function to fetch open interest from URL
+def fetch_open_interest_from_url(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        # st.write(type(response.json()))
+        json_data = response.json()
+        df3 = pd.json_normalize(json_data['chart_data'])
+        # st.write(df3.columns)
+        # print("******************************")
+        return df3
+    except Exception as e:
+        st.error(f"error fetching data from url: {e}")
+        return []
+
+# URL to fetch open interest data
+url = "https://d2v1fiwobg9w6.cloudfront.net/open_interest"
+
+# Function to process fetched open interest data
+def process_open_interest_data(data):
+    records = []
+    for _, entry in data.iterrows():
+        # st.write(entry)
+        coin = entry['coin']
+        if coin in st.session_state['selected_coins']:
+            time_str = entry.get('time')
+            open_interest = entry.get('open_interest')
+            if time_str and open_interest is not None:
+                timestamp = pd.to_datetime(time_str)
+                records.append({
+                    'coin': coin,
+                    'time': timestamp,
+                    'open_interest': open_interest
+                })
+    return records
+
+# Fetch and process open interest data
+oi_data = fetch_open_interest_from_url(url)
+# st.write(oi_data.head())
+processed_oi_records = process_open_interest_data(oi_data)
+st.session_state['data'] = {}
+
+for coin in selected_coins:
+    # Filter records for the current coin
+    coin_records = [record for record in processed_oi_records if coin==record['coin']]
+    
+    if coin_records:
+        df_new = pd.DataFrame(coin_records)
+        
+        if st.session_state['data'].get(coin) is None:
+            st.session_state['data'][coin] = df_new
+        else:
+            st.session_state['data'][coin] = pd.concat(
+                [st.session_state['data'][coin], df_new],
+                ignore_index=True
+            )
+        
+        if len(st.session_state['data'][coin]) > 1000:
+            st.session_state['data'][coin] = st.session_state['data'][coin].tail(1000)
+
+
+combined_df = pd.DataFrame()
+for coin in st.session_state['selected_coins']:
+    df = st.session_state['data'].get(coin)
+    # df_melt = df.sort_values('time')
+    combined_df = pd.concat([combined_df, df])
+        
+fig = px.line(combined_df,
+            x='time',
+            y='open_interest',
+            color = 'coin',
+        )
+
+fig.update_layout(
+    title="live open interests",
+    xaxis_title="time",
+    yaxis_title="open interest",
+    hovermode="x unified"
+)
+
+
+# Display the Plotly chart
+st.plotly_chart(fig, use_container_width=True)
+
+count = st_autorefresh(
+    interval=5 * 1000,  # 5 seconds
+    key="data_refresh",
+)
+
+
+
+#     time.sleep(1)
 
 # perps_response = requests.post("https://api.hyperliquid.xyz/info", headers=headers, json=perps_data)
 # fr_response = requests.post("https://api.hyperliquid.xyz/info", headers=headers, json=hist_fr_data)
@@ -125,72 +232,3 @@ with placeholder.container():
 #     # print(fr_response.json())
 # else:
 #     print(f"Request failed with status code: {fr_response.text}")
-
-
-# # read csv from a github repo
-# dataset_url = "https://raw.githubusercontent.com/Lexie88rus/bank-marketing-analysis/master/bank.csv"
-
-# # read csv from a URL
-# @st.experimental_memo
-# def get_data() -> pd.DataFrame:
-#     return pd.read_csv(dataset_url)
-
-# df = get_data()
-
-# near real-time / live feed simulation
-# for seconds in range(200):
-
-    # df["age_new"] = df["age"] * np.random.choice(range(1, 5))
-    # df["balance_new"] = df["balance"] * np.random.choice(range(1, 5))
-
-    # # creating KPIs
-    # avg_age = np.mean(df["age_new"])
-
-    # count_married = int(
-    #     df[(df["marital"] == "married")]["marital"].count()
-    #     + np.random.choice(range(1, 30))
-    # )
-
-    # balance = np.mean(df["balance_new"])
-
-    # with placeholder.container():
-
-    #     # # create three columns
-    #     # kpi1, kpi2, kpi3 = st.columns(3)
-
-    #     # # fill in those three columns with respective metrics or KPIs
-    #     # kpi1.metric(
-    #     #     label="Age ⏳",
-    #     #     value=round(avg_age),
-    #     #     delta=round(avg_age) - 10,
-    #     # )
-        
-    #     # kpi2.metric(
-    #     #     label="Married Count 💍",
-    #     #     value=int(count_married),
-    #     #     delta=-10 + count_married,
-    #     # )
-        
-    #     # kpi3.metric(
-    #     #     label="A/C Balance ＄",
-    #     #     value=f"$ {round(balance,2)} ",
-    #     #     delta=-round(balance / count_married) * 100,
-    #     # )
-
-    #     # create two columns for charts
-    #     fig_col1, fig_col2 = st.columns(2)
-    #     with fig_col1:
-    #         st.markdown("### Funding rate chart")
-    #         # fig = px.density_heatmap(
-    #         #     data_frame=df, y="age_new", x="marital"
-    #         # )
-    #         st.write(fig)
-            
-    #     # with fig_col2:
-    #     #     st.markdown("### Second Chart")
-    #     #     fig2 = px.histogram(data_frame=df, x="age_new")
-    #     #     st.write(fig2)
-
-    #     st.markdown("### Detailed Data View")
-    #     st.dataframe(df2)
-    #     time.sleep(1)
