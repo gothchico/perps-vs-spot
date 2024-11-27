@@ -1,8 +1,8 @@
 import time  # to simulate a real time data, time loop
 from datetime import datetime, timedelta
-import numpy as np  # np mean, np random
-import pandas as pd  # read csv, df manipulation
-import plotly.express as px  # interactive charts
+import numpy as np 
+import pandas as pd  
+import plotly.express as px  
 import streamlit as st  # 🎈 data web app development
 import requests
 from hyperliquid.info import Info
@@ -10,7 +10,7 @@ from hyperliquid.info import Info
 
 st.set_page_config(
     page_title="Perps vs Spot",
-    page_icon="✅",
+    page_icon="🎰",
     layout="wide",
 )
 

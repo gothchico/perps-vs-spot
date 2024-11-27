@@ -2,7 +2,7 @@
 
 A simple Streamlit app showing the funding rate analysis on perps.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://perps-vs-spot.streamlit.app/)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://perps-vs-spot-test.streamlit.app/)
 
 ### How to run it on your own machine
 
