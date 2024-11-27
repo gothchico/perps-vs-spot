@@ -1,6 +1,6 @@
 # :chart_with_upwards_trend: funding rate analysis
 
-A simple app showing the funding rate analysis on perps and live open interest on hyperliquid.
+A simple app showing the funding rate analysis and live open interest on hyperliquid perps.
 
 [![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://perps-vs-spot-test.streamlit.app/)
 
