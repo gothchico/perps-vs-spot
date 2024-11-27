@@ -1,3 +1,4 @@
 streamlit
 pandas
 hyperliquid-python-sdk
+plotly_express
