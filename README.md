@@ -1,8 +1,8 @@
-# :earth_americas: GDP dashboard template
+# :chart_with_upwards_trend: funding rate analysis
 
-A simple Streamlit app showing the GDP of different countries in the world.
+A simple Streamlit app showing the funding rate analysis on perps.
 
-[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://gdp-dashboard-template.streamlit.app/)
+[![Open in Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://perps-vs-spot.streamlit.app/)
 
 ### How to run it on your own machine
 
@@ -15,5 +15,5 @@ A simple Streamlit app showing the GDP of different countries in the world.
 2. Run the app
 
    ```
-   $ streamlit run streamlit_app.py
+   $ streamlit run funding_rate.py
    ```
